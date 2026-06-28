@@ -221,6 +221,15 @@ DWORD WINAPI ReadSerialThread(LPVOID lpParam) {
     return 0;
 }
 
+DWORD isShortCmd(strnew CmdLine, DWORD bytesRead){
+    if (strstr(CmdLine.Name._char, "clear") != NULL){
+        system("cls");
+        return 0;
+    }
+    return bytesRead;
+}
+
+
 void InteractiveMode() {
     printf("\n--- Press Ctrl+A then Ctrl+C to exit ---\n\n");
 
@@ -228,7 +237,7 @@ void InteractiveMode() {
     SetThreadPriority(hThread, THREAD_PRIORITY_HIGHEST);
 
     DWORD dwWritten;
-    char buffer[256];
+    char buffer[1024];
     DWORD bytesRead;
 
     while (g_KeepRunning) {
@@ -241,7 +250,7 @@ void InteractiveMode() {
         if (bytesRead > 0 && buffer[bytesRead - 1] == '\r') {
             bytesRead--;
         }
-
+        bytesRead = isShortCmd(NEW_NAME(buffer), bytesRead);
         if (bytesRead > 0) {
             // 核心修复：正确处理异步写入
             if (!WriteFile(hSerial, buffer, bytesRead, &dwWritten, &osWrite)) {
