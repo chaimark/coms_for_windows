@@ -1,8 +1,17 @@
 #define INITGUID
 #include "coms.h"
 #include "./WorkLib/StrLib.h"
+#include "./WorkLib/cJson.h"
 #include <ctype.h>
 #include <signal.h>
+
+struct _FileInfoSpaces {
+    bool IsShowTime;
+    char CmdNameArray[2048];
+    char CmdVarArray[2048];
+}FileInfoSpaces;
+JsonArray CmdName = {0};
+JsonArray CmdVar = {0};
 
 #define stdin_clean                                 \
     do {                                            \
@@ -104,8 +113,7 @@ void ListAvailablePorts() {
     DeviceInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
     for (DWORD i = 0; SetupDiEnumDeviceInfo(hDevInfo, i, &DeviceInfoData); i++) {
         TCHAR deviceName[256];
-        if (SetupDiGetDeviceRegistryProperty(hDevInfo, &DeviceInfoData, SPDRP_FRIENDLYNAME, NULL, (PBYTE)deviceName,
-                                             sizeof(deviceName), NULL)) {
+        if (SetupDiGetDeviceRegistryProperty(hDevInfo, &DeviceInfoData, SPDRP_FRIENDLYNAME, NULL, (PBYTE)deviceName,sizeof(deviceName), NULL)) {
             _tprintf(_T("devices: %s\n"), deviceName);
         }
     }
@@ -221,11 +229,177 @@ DWORD WINAPI ReadSerialThread(LPVOID lpParam) {
     return 0;
 }
 
+// 底层只读文件，无交互
+int _readFile(FILE *file) {
+    // Seek to the end of the file to determine its size
+    fseek(file, 0, SEEK_END);
+    long FileSize = ftell(file);
+    rewind(file);
+
+    // Allocate memory for the file content
+    strnew_malloc(Content, FileSize + 1);
+    if (Content.Name._char == NULL) {
+        perror("Failed to allocate memory");
+        return -1;
+    }
+
+    // Read the file content into the buffer
+    size_t ReadSize = fread(Content.Name._char, 1, FileSize, file);
+    if (ReadSize != (size_t)FileSize) {
+        perror("Failed to read the entire file");
+        return -1;
+    }
+
+    // Null-terminate the string
+    Content.Name._char[FileSize] = '\0';
+
+    JsonObject FileInfo = newJsonObjectByString(Content);
+    FileInfoSpaces.IsShowTime = FileInfo.getBool(&FileInfo, "isShowTime");
+    if ((FileInfo.isJsonNull(&FileInfo, "cmd_Name_Array") >= 0) &&
+        (FileInfo.isJsonNull(&FileInfo, "cmd_Var_Array") >= 0)) {
+        CmdVar = FileInfo.getArray(&FileInfo, "cmd_Var_Array", NEW_NAME(FileInfoSpaces.CmdVarArray));
+        CmdName = FileInfo.getArray(&FileInfo, "cmd_Name_Array", NEW_NAME(FileInfoSpaces.CmdNameArray));
+    }
+    if (CmdName.sizeItemNum(&CmdName) != CmdVar.sizeItemNum(&CmdVar)) {
+        JsonArray Zero = {0};
+        CmdName = Zero;
+        CmdVar = Zero;
+        printf("CmdName_Array and CmdVar_Array size not equal\n");
+        return -1;
+    }
+    return 0;
+}
+
+void displayHelp(const char *FileName) {
+    // 重新读文件更新配置
+    FILE *file = fopen(FileName, "r");
+    if (file == NULL) {
+        perror("Failed to open file");
+        return;
+    }
+
+    if (_readFile(file) == -1) {
+        printf("read file error");
+        fclose(file);
+        return;
+    }
+    fclose(file);
+    printf("\ninput key 'close_heat',close send data heating");
+    printf("\ninput key 'open_heat',open send data heating");
+    printf("\n>>  %s\n>>  %s\n", CmdName.JsonString.Name._char, CmdVar.JsonString.Name._char);
+}
+
+// 提取 CmdLen 中输入的参数
+bool getUserArg(strnew OutItemStr, strnew CmdLen, int Item_I) {
+    // stringSlice(IntStr, CmdName, , );
+    int count = 0;
+    int n = 0;
+    char *ptr = CmdLen.Name._char;
+    while (sscanf(ptr, "%s%n", OutItemStr.Name._char, &n) == 1) {
+        if (count == Item_I) {
+            return true;
+        }
+        memset(OutItemStr.Name._char, 0, OutItemStr.MaxLen);
+        count++;
+        ptr += n;
+    }
+    return false;
+}
+
+// 将 ChrA 换成 ChrB, 如果确实需要 ChrA 就写两个 ChrA
+void changeChr(strnew InputStr, char ChrA, char ChrB) {
+    for (int i = 0; i < InputStr.MaxLen; i++) {
+        if (InputStr.Name._char[i] != ChrA) {
+            continue;
+        }
+        InputStr.Name._char[i] = ChrB;
+    }
+}
+// CmdLen: "read 02345678902"
+// SendJsonSpace: "{'checkFlag':'$$chai',Id':'$','data':'read'}"
+// 装载用户快捷指令的参数, 如果需要发送 $ 输入两个 $$ 代替
+void makeCmdStr(strnew SendJsonSpace, strnew CmdLen) {
+    int Arg_i = 1;
+    int OverAddr = 0;
+    strnew_malloc(OverStr, strlen(SendJsonSpace.Name._char) + strlen(CmdLen.Name._char));
+    strnew_malloc(IntStr, CmdLen.MaxLen);
+    for (int i = 0; (i < SendJsonSpace.MaxLen) && (SendJsonSpace.Name._char[i] != '\0'); i++) {
+        if (i + 1 >= SendJsonSpace.MaxLen) {
+            OverStr.Name._char[OverAddr++] = '\0';
+            break;
+        }
+        if (SendJsonSpace.Name._char[i] != '$') {
+            OverStr.Name._char[OverAddr++] = (SendJsonSpace.Name._char[i] == '\'' ? '\"' : SendJsonSpace.Name._char[i]);
+            continue;
+        }
+        if (SendJsonSpace.Name._char[i + 1] == '$') {
+            OverStr.Name._char[OverAddr++] = SendJsonSpace.Name._char[i];
+            i++;
+            continue;
+        }
+        // SendJsonSpace.Name._char[i] 是 $ 变量
+        // 提取 CmdLen 中输入的参数
+        if (getUserArg(IntStr, CmdLen, Arg_i++)) {
+            // 追加到 OverStr
+            OverAddr = catString(OverStr.Name._char, IntStr.Name._cschar, OverStr.MaxLen, strlen(IntStr.Name._char));
+        } else {
+            changeChr(SendJsonSpace, '\'', '\"');
+            return; // 中止，直接发 SendJsonSpace
+        }
+    }
+    Arg_i = strlen(OverStr.Name._char);
+    // 替换结束，替换 SendJsonSpace
+    memcpy(SendJsonSpace.Name._char, OverStr.Name._char, strlen(OverStr.Name._char) + 1);
+    SendJsonSpace.Name._char[Arg_i] = '\0';
+    return;
+}
+
+void findCmdByUserKeyStr(strnew UserKeyStr) {
+    // 如果用户输入的字符串长度大于快捷指令的长度,则不可能是会计指令
+    if (strlen(UserKeyStr.Name._char) > 256) {
+        return; // 可以发送
+    }
+    newString(TempCmdSpace, 257);
+    for (int i = 0; i < CmdName.sizeItemNum(&CmdName); i++) {
+        CmdName.get(&CmdName, TempCmdSpace, i);
+        // 指令表是用户输入的字串
+        if (strstr(UserKeyStr.Name._char, TempCmdSpace.Name._char) != NULL) {
+            TempCmdSpace.Name._int[0] = i;
+            TempCmdSpace.Name._int[1] = -1;
+            TempCmdSpace.Name._int[2] = 0;
+            break;
+        }
+        memset(TempCmdSpace.Name._char, 0, TempCmdSpace.MaxLen);
+    }
+    // 如果是 -1 表示找到了
+    if (TempCmdSpace.Name._int[1] == -1) {
+        int Addr = TempCmdSpace.Name._int[0];
+        memset(TempCmdSpace.Name._char, 0, TempCmdSpace.MaxLen);
+        // 保存用户输入
+        memcpy(TempCmdSpace.Name._char, UserKeyStr.Name._char, strlen(UserKeyStr.Name._char));
+        memset(UserKeyStr.Name._char, 0, UserKeyStr.MaxLen);
+        // 将用户的快捷指令改成 config.json 中存的指令
+        CmdVar.get(&CmdVar, UserKeyStr, Addr);
+        // 将用户输入的指令参数 $, 替换到 UserKeyStr 中保存的模板指令
+        makeCmdStr(UserKeyStr, TempCmdSpace);
+    }
+    return;
+}
+
 DWORD isShortCmd(strnew CmdLine, DWORD bytesRead){
+    if (strlen(CmdLine.Name._char) == 0) {
+        return 0;
+    }
     if (strstr(CmdLine.Name._char, "clear") != NULL){
         system("cls");
         return 0;
     }
+    if (strstr(CmdLine.Name._char, "help") != NULL){
+		displayHelp("coms_config.json");
+	}
+
+    // 检查用户输入的是不是指令表中的指令
+    findCmdByUserKeyStr(CmdLine);
     return bytesRead;
 }
 
@@ -303,6 +477,8 @@ int main(int argc, char *argv[]) {
         printf("\nplease enter the following command after logging into the shell");
         printf("\n\033[1;31m export TERM=xterm\n \033[0m");
     } while (!OpenSerialPort());
+
+    displayHelp("coms_config.json");
 
     SetTerminalUTF8();
     InteractiveMode();
