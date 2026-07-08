@@ -272,12 +272,12 @@ int _readFile(FILE *file) {
 
 void displayHelp(const char *FileName) {
     // 重新读文件更新配置
-    FILE *file = fopen(FileName, "r");
+    FILE *file = fopen(FileName, "rb");  // 使用"rb"模式
     if (file == NULL) {
         perror("Failed to open file");
         return;
     }
-
+    
     if (_readFile(file) == -1) {
         printf("read file error");
         fclose(file);
