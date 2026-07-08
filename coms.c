@@ -396,11 +396,12 @@ DWORD isShortCmd(strnew CmdLine, DWORD bytesRead){
     }
     if (strstr(CmdLine.Name._char, "help") != NULL){
 		displayHelp("coms_config.json");
+		return 0;
 	}
 
     // 检查用户输入的是不是指令表中的指令
     findCmdByUserKeyStr(CmdLine);
-    return bytesRead;
+    return strlen(CmdLine.Name._char);
 }
 
 
