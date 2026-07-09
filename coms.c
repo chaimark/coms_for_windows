@@ -284,8 +284,6 @@ void displayHelp(const char *FileName) {
         return;
     }
     fclose(file);
-    printf("\ninput key 'close_heat',close send data heating");
-    printf("\ninput key 'open_heat',open send data heating");
     printf("\n>>  %s\n>>  %s\n", CmdName.JsonString.Name._char, CmdVar.JsonString.Name._char);
 }
 
