@@ -9,7 +9,7 @@ struct _FileInfoSpaces {
     bool IsShowTime;
     char CmdNameArray[2048];
     char CmdVarArray[2048];
-}FileInfoSpaces;
+} FileInfoSpaces;
 JsonArray CmdName = {0};
 JsonArray CmdVar = {0};
 
@@ -113,7 +113,7 @@ void ListAvailablePorts() {
     DeviceInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
     for (DWORD i = 0; SetupDiEnumDeviceInfo(hDevInfo, i, &DeviceInfoData); i++) {
         TCHAR deviceName[256];
-        if (SetupDiGetDeviceRegistryProperty(hDevInfo, &DeviceInfoData, SPDRP_FRIENDLYNAME, NULL, (PBYTE)deviceName,sizeof(deviceName), NULL)) {
+        if (SetupDiGetDeviceRegistryProperty(hDevInfo, &DeviceInfoData, SPDRP_FRIENDLYNAME, NULL, (PBYTE)deviceName, sizeof(deviceName), NULL)) {
             _tprintf(_T("devices: %s\n"), deviceName);
         }
     }
@@ -272,12 +272,12 @@ int _readFile(FILE *file) {
 
 void displayHelp(const char *FileName) {
     // 重新读文件更新配置
-    FILE *file = fopen(FileName, "rb");  // 使用"rb"模式
+    FILE *file = fopen(FileName, "rb"); // 使用"rb"模式
     if (file == NULL) {
         perror("Failed to open file");
         return;
     }
-    
+
     if (_readFile(file) == -1) {
         printf("read file error");
         fclose(file);
@@ -384,18 +384,18 @@ void findCmdByUserKeyStr(strnew UserKeyStr) {
     return;
 }
 
-DWORD isShortCmd(strnew CmdLine, DWORD bytesRead){
+DWORD isShortCmd(strnew CmdLine, DWORD bytesRead) {
     if (strlen(CmdLine.Name._char) == 0) {
         return 0;
     }
-    if (strstr(CmdLine.Name._char, "clear") != NULL){
+    if (strstr(CmdLine.Name._char, "clear") != NULL) {
         system("cls");
         return 0;
     }
-    if (strstr(CmdLine.Name._char, "help") != NULL){
-		displayHelp("coms_config.json");
-		return 0;
-	}
+    if (strstr(CmdLine.Name._char, "help") != NULL) {
+        displayHelp("coms_config.json");
+        return 0;
+    }
 
     // 检查用户输入的是不是指令表中的指令
     findCmdByUserKeyStr(CmdLine);
@@ -414,11 +414,11 @@ void InteractiveMode() {
     DWORD bytesRead;
 
     while (g_KeepRunning) {
-       if(fgets(buffer, sizeof(buffer), stdin) == NULL){
+        if (fgets(buffer, sizeof(buffer), stdin) == NULL) {
             continue;
         }
         bytesRead = strlen(buffer);
-        
+
         // 移除控制台输入自带的 \r 字符
         if (bytesRead > 0 && buffer[bytesRead - 1] == '\r') {
             bytesRead--;
